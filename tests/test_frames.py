@@ -68,3 +68,37 @@ def test_scene_fallback_on_static_clip(static_clip: Path, tmp_path: Path):
     )
     assert meta["engine"] == "uniform"
     assert meta["fallback"] is True
+
+
+def test_fps_mode_args_picks_modern_flag_on_ffmpeg_5_plus(monkeypatch):
+    """ffmpeg >= 5 understands -fps_mode; 9.0 removed -vsync entirely."""
+    for banner in ("ffmpeg version 9.0.1 Copyright (c)", "ffmpeg version n5.1.2"):
+        frames._FPS_MODE_ARGS = None
+        monkeypatch.setattr(
+            frames.subprocess, "run",
+            lambda *a, **k: __import__("types").SimpleNamespace(stdout=banner, returncode=0),
+        )
+        assert frames.fps_mode_args() == ["-fps_mode", "vfr"]
+    frames._FPS_MODE_ARGS = None
+
+
+def test_fps_mode_args_falls_back_to_vsync_on_ffmpeg_4(monkeypatch):
+    """-fps_mode only landed in 5.0, so older builds still need -vsync."""
+    frames._FPS_MODE_ARGS = None
+    monkeypatch.setattr(
+        frames.subprocess, "run",
+        lambda *a, **k: __import__("types").SimpleNamespace(stdout="ffmpeg version 4.4.1", returncode=0),
+    )
+    assert frames.fps_mode_args() == ["-vsync", "vfr"]
+    frames._FPS_MODE_ARGS = None
+
+
+def test_fps_mode_args_defaults_to_modern_when_version_unreadable(monkeypatch):
+    """An unparseable or missing ffmpeg gets the modern flag, not the removed one."""
+    frames._FPS_MODE_ARGS = None
+    monkeypatch.setattr(
+        frames.subprocess, "run",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("no ffmpeg")),
+    )
+    assert frames.fps_mode_args() == ["-fps_mode", "vfr"]
+    frames._FPS_MODE_ARGS = None
